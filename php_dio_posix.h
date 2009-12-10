@@ -2,7 +2,7 @@
    +----------------------------------------------------------------------+
    | PHP Version 5                                                        |
    +----------------------------------------------------------------------+
-   | Copyright (c) 1997-2004 The PHP Group                                |
+   | Copyright (c) 2009 Melanie Rhianna Lewis                             |
    +----------------------------------------------------------------------+
    | This source file is subject to version 3.0 of the PHP license,       |
    | that is bundled with this package in the file LICENSE, and is        |
@@ -12,49 +12,54 @@
    | obtain it through the world-wide-web, please send a note to          |
    | license@php.net so we can mail you a copy immediately.               |
    +----------------------------------------------------------------------+
+   | Author: Melanie Rhianna Lewis <cyberspice@php.net>                   |
+   +----------------------------------------------------------------------+
  */
 
-#ifndef PHP_DIO_H
-#define PHP_DIO_H
+#ifndef PHP_DIO_POSIX_H_
+#define PHP_DIO_POSIX_H_
 
-#include "php.h"
-#include "php_dio_common.h"
-#include "php_dio_stream_wrappers.h"
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/select.h>
+#include <sys/time.h>
 
-extern zend_module_entry dio_module_entry;
-#define phpext_dio_ptr &dio_module_entry
-
-#define PHP_DIO_VERSION "0.0.3-dev"
-
-/* Standard module functions. */
-PHP_MINIT_FUNCTION(dio);
-PHP_MSHUTDOWN_FUNCTION(dio);
-PHP_RINIT_FUNCTION(dio);
-PHP_RSHUTDOWN_FUNCTION(dio);
-PHP_MINFO_FUNCTION(dio);
-
-/* Legacy functions. */
-PHP_FUNCTION(dio_open);
-PHP_FUNCTION(dio_truncate);
-PHP_FUNCTION(dio_stat);
-PHP_FUNCTION(dio_seek);
-PHP_FUNCTION(dio_read);
-PHP_FUNCTION(dio_write);
-PHP_FUNCTION(dio_fcntl);
-PHP_FUNCTION(dio_close);
-PHP_FUNCTION(dio_tcsetattr);
-
-typedef struct {
-	int fd;
-} php_fd_t;
-
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
 #endif
 
+#include <fcntl.h>
+#include <termios.h>
+
+/**
+ * Detect if we can support non blocking IO.
+ */
+#ifdef O_NONBLOCK
+#define DIO_HAS_NONBLOCK
+#endif
+
+/**
+ * POSIXy platforms have file permissions
+ */
+#define DIO_HAS_FILEPERMS
+
+#include "php_dio_common_data.h"
+
+typedef struct _php_dio_posix_stream_data {
+	php_dio_stream_data common;
+	int fd;
+	int flags;
+	/* Serial options */
+	struct termios oldtio;
+} php_dio_posix_stream_data ;
+
+#endif /* PHP_DIO_POSIX_H_ */
 
 /*
  * Local variables:
- * tab-width: 4
  * c-basic-offset: 4
- * indent-tabs-mode: t
+ * tab-width: 4
  * End:
+ * vim600: fdm=marker
+ * vim: sw=4 ts=4 noet
  */
