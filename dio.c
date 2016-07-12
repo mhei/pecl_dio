@@ -72,9 +72,9 @@ static int new_php_fd(php_fd_t **f, int fd)
 	return 1;
 }
 
-static void _dio_close_fd(zend_rsrc_list_entry *rsrc TSRMLS_DC)
+static void _dio_close_fd(zend_resource *res)
 {
-	php_fd_t *f = (php_fd_t *) rsrc->ptr;
+	php_fd_t *f = (php_fd_t *)zend_fetch_resource(res, NULL, le_fd);
 	if (f) {
 		close(f->fd);
 		free(f);
@@ -115,7 +115,7 @@ PHP_FUNCTION(dio_open)
 		RETURN_FALSE;
 	}
 
-	ZEND_REGISTER_RESOURCE(return_value, f, le_fd);
+	RETVAL_RES(zend_register_resource(f, le_fd));
 }
 /* }}} */
 
@@ -144,7 +144,7 @@ PHP_FUNCTION(dio_fdopen)
 		RETURN_FALSE;
 	}
 
-	ZEND_REGISTER_RESOURCE(return_value, f, le_fd);
+	RETVAL_RES(zend_register_resource(f, le_fd));
 }
 /* }}} */
 
@@ -175,7 +175,7 @@ PHP_FUNCTION(dio_dup)
 		RETURN_FALSE;
 	}
 
-	ZEND_REGISTER_RESOURCE(return_value, df, le_fd);
+	RETVAL_RES(zend_register_resource(f, le_fd));
 }
 /* }}} */
 #endif
@@ -434,7 +434,7 @@ PHP_FUNCTION(dio_fcntl)
 			if (!new_php_fd(&new_f, fcntl(f->fd, cmd, Z_LVAL_P(arg)))) {
 				RETURN_FALSE;
 			}
-			ZEND_REGISTER_RESOURCE(return_value, new_f, le_fd);
+			RETVAL_RES(zend_register_resource(new_f, le_fd));
 			break;
 		}
 		default:
