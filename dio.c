@@ -24,6 +24,7 @@
 #include "php.h"
 #include "php_ini.h"
 #include "ext/standard/info.h"
+#include "ext/standard/php_string.h"
 
 #include "php_dio.h"
 #include "php_dio_stream_wrappers.h"
@@ -213,7 +214,7 @@ PHP_FUNCTION(dio_read)
 	data = erealloc(data, res + 1);
 	data[res] = 0;
 
-	RETURN_STRINGL(data, res, 0);
+	RETURN_STRINGL(data, res);
 }
 /* }}} */
 
