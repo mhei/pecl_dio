@@ -632,7 +632,7 @@ int dio_serial_purge(php_dio_stream_data *data) {
 /* {{{ dio_serial_open_stream
  * Opens the underlying stream.
  */
-int dio_serial_open_stream(char *filename, char *mode, php_dio_stream_data *data) {
+int dio_serial_open_stream(const char *filename, const char *mode, php_dio_stream_data *data) {
 	php_dio_posix_stream_data *pdata = (php_dio_posix_stream_data*)data;
 
 #ifdef O_NOCTTY
