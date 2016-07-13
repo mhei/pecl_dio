@@ -126,12 +126,12 @@ php_stream_ops dio_raw_stream_ops = {
  * fopen for the dio.raw stream.
  */
 static php_stream *dio_raw_fopen_wrapper(php_stream_wrapper *wrapper,
-                                         char *path, char *mode,
-                                         int options, char **opened_path,
-                                         php_stream_context *context STREAMS_DC TSRMLS_DC) {
+                                         const char *path, const char *mode, int options,
+                                         zend_string **opened_path, php_stream_context *context STREAMS_DC)
+{
 	php_dio_stream_data *data;
 	php_stream *stream;
-	char *filename;
+	const char *filename;
 
 	/* Check it was actually for us (not a corrupted function pointer
 	   somewhere!). */
@@ -287,9 +287,9 @@ php_stream_ops dio_serial_stream_ops = {
  * fopen for the dio.raw stream.
  */
 static php_stream *dio_serial_fopen_wrapper(php_stream_wrapper *wrapper,
-                                         char *path, char *mode,
-                                         int options, char **opened_path,
-                                         php_stream_context *context STREAMS_DC TSRMLS_DC) {
+                                            const char *path, const char *mode, int options,
+                                            zend_string **opened_path, php_stream_context *context STREAMS_DC)
+{
 	php_dio_stream_data *data;
 	php_stream *stream;
 	char *filename;
