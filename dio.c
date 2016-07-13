@@ -73,9 +73,9 @@ static int new_php_fd(php_fd_t **f, int fd)
 	return 1;
 }
 
-static void _dio_close_fd(zend_resource *res)
+static void _dio_close_fd(zend_resource *rsrc)
 {
-	php_fd_t *f = (php_fd_t *)zend_fetch_resource(res, NULL, le_fd);
+	php_fd_t *f = (php_fd_t *)rsrc->ptr;
 	if (f) {
 		close(f->fd);
 		free(f);
@@ -87,14 +87,18 @@ static void _dio_close_fd(zend_resource *res)
 PHP_FUNCTION(dio_open)
 {
 	php_fd_t *f;
-	char     *file_name;
-	int       file_name_length;
+	char     *file_name = NULL;
+	size_t    file_name_length = 0;
 	long      flags;
 	long      mode = 0;
 	int       fd;
 
 	if (zend_parse_parameters(ZEND_NUM_ARGS(), "sl|l", &file_name, &file_name_length, &flags, &mode) == FAILURE) {
 		return;
+	}
+
+	if (!file_name || file_name[0] == '\0') {
+		RETURN_FALSE;
 	}
 
 	if (php_check_open_basedir(file_name) || DIO_SAFE_MODE_CHECK(file_name, "wb+")) {
@@ -176,7 +180,7 @@ PHP_FUNCTION(dio_dup)
 		RETURN_FALSE;
 	}
 
-	RETVAL_RES(zend_register_resource(f, le_fd));
+	RETVAL_RES(zend_register_resource(df, le_fd));
 }
 /* }}} */
 #endif
@@ -660,7 +664,7 @@ PHP_FUNCTION(dio_close)
 		RETURN_FALSE;
 	}
 
-	zend_list_delete(Z_LVAL_P(r_fd));
+	zend_list_delete(Z_RES_P(r_fd));
 }
 /* }}} */
 
