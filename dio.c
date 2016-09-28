@@ -24,6 +24,7 @@
 #include "php.h"
 #include "php_ini.h"
 #include "ext/standard/info.h"
+#include "ext/standard/php_string.h"
 
 #include "php_dio.h"
 #include "php_dio_stream_wrappers.h"
@@ -72,9 +73,9 @@ static int new_php_fd(php_fd_t **f, int fd)
 	return 1;
 }
 
-static void _dio_close_fd(zend_rsrc_list_entry *rsrc TSRMLS_DC)
+static void _dio_close_fd(zend_resource *rsrc)
 {
-	php_fd_t *f = (php_fd_t *) rsrc->ptr;
+	php_fd_t *f = (php_fd_t *)rsrc->ptr;
 	if (f) {
 		close(f->fd);
 		free(f);
@@ -86,17 +87,21 @@ static void _dio_close_fd(zend_rsrc_list_entry *rsrc TSRMLS_DC)
 PHP_FUNCTION(dio_open)
 {
 	php_fd_t *f;
-	char     *file_name;
-	int       file_name_length;
+	char     *file_name = NULL;
+	size_t    file_name_length = 0;
 	long      flags;
 	long      mode = 0;
 	int       fd;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "sl|l", &file_name, &file_name_length, &flags, &mode) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "sl|l", &file_name, &file_name_length, &flags, &mode) == FAILURE) {
 		return;
 	}
 
-	if (php_check_open_basedir(file_name TSRMLS_CC) || DIO_SAFE_MODE_CHECK(file_name, "wb+")) {
+	if (!file_name || file_name[0] == '\0') {
+		RETURN_FALSE;
+	}
+
+	if (php_check_open_basedir(file_name) || DIO_SAFE_MODE_CHECK(file_name, "wb+")) {
 		RETURN_FALSE;
 	}
 
@@ -107,7 +112,7 @@ PHP_FUNCTION(dio_open)
 	}
 
 	if (fd == -1) {
-		php_error_docref(NULL TSRMLS_CC, E_WARNING, "cannot open file %s with flags %ld and permissions %ld: %s", file_name, flags, mode, strerror(errno));
+		php_error_docref(NULL, E_WARNING, "cannot open file %s with flags %ld and permissions %ld: %s", file_name, flags, mode, strerror(errno));
 		RETURN_FALSE;
 	}
 
@@ -115,7 +120,7 @@ PHP_FUNCTION(dio_open)
 		RETURN_FALSE;
 	}
 
-	ZEND_REGISTER_RESOURCE(return_value, f, le_fd);
+	RETVAL_RES(zend_register_resource(f, le_fd));
 }
 /* }}} */
 
@@ -129,14 +134,14 @@ PHP_FUNCTION(dio_fdopen)
 	long lfd;
 	int fd;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "l", &lfd) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "l", &lfd) == FAILURE) {
 		return;
 	}
 
 	fd = (int)lfd;
 
 	if ((fcntl(fd, F_GETFL, 0) == -1) && (errno == EBADF)) {
-		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Bad file descriptor %d", fd);
+		php_error_docref(NULL, E_WARNING, "Bad file descriptor %d", fd);
 		RETURN_FALSE;
 	}
 
@@ -144,7 +149,7 @@ PHP_FUNCTION(dio_fdopen)
 		RETURN_FALSE;
 	}
 
-	ZEND_REGISTER_RESOURCE(return_value, f, le_fd);
+	RETVAL_RES(zend_register_resource(f, le_fd));
 }
 /* }}} */
 
@@ -157,15 +162,17 @@ PHP_FUNCTION(dio_dup)
 	php_fd_t *f, *df;
 	int dfd;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "r", &r_fd) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "r", &r_fd) == FAILURE) {
 		return;
 	}
 
-	ZEND_FETCH_RESOURCE(f, php_fd_t *, &r_fd, -1, le_fd_name, le_fd);
+	if ((f = (php_fd_t *)zend_fetch_resource(Z_RES_P(r_fd), le_fd_name, le_fd)) == NULL) {
+		RETURN_FALSE;
+	}
 
 	dfd = dup(f->fd);
 	if (dfd == -1) {
-		php_error_docref(NULL TSRMLS_CC, E_WARNING, "cannot duplication file descriptor %d: %s", f->fd, strerror(errno));
+		php_error_docref(NULL, E_WARNING, "cannot duplication file descriptor %d: %s", f->fd, strerror(errno));
 		RETURN_FALSE;
 	}
 
@@ -173,7 +180,7 @@ PHP_FUNCTION(dio_dup)
 		RETURN_FALSE;
 	}
 
-	ZEND_REGISTER_RESOURCE(return_value, df, le_fd);
+	RETVAL_RES(zend_register_resource(df, le_fd));
 }
 /* }}} */
 #endif
@@ -188,14 +195,16 @@ PHP_FUNCTION(dio_read)
 	long      bytes = 1024;
 	ssize_t   res;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "r|l", &r_fd, &bytes) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "r|l", &r_fd, &bytes) == FAILURE) {
 		return;
 	}
 
-	ZEND_FETCH_RESOURCE(f, php_fd_t *, &r_fd, -1, le_fd_name, le_fd);
+	if ((f = (php_fd_t *)zend_fetch_resource(Z_RES_P(r_fd), le_fd_name, le_fd)) == NULL) {
+		RETURN_FALSE;
+	}
 
 	if (bytes <= 0) {
-		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Length parameter must be greater than 0.");
+		php_error_docref(NULL, E_WARNING, "Length parameter must be greater than 0.");
 		RETURN_FALSE;
 	}
 
@@ -209,7 +218,7 @@ PHP_FUNCTION(dio_read)
 	data = erealloc(data, res + 1);
 	data[res] = 0;
 
-	RETURN_STRINGL(data, res, 0);
+	RETURN_STRINGL(data, res);
 }
 /* }}} */
 
@@ -224,20 +233,22 @@ PHP_FUNCTION(dio_write)
 	long      trunc_len = 0;
 	ssize_t   res;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rs|l", &r_fd, &data, &data_len, &trunc_len) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "rs|l", &r_fd, &data, &data_len, &trunc_len) == FAILURE) {
 		return;
 	}
 
 	if (trunc_len < 0 || trunc_len > data_len) {
-		php_error_docref(NULL TSRMLS_CC, E_WARNING, "length must be greater or equal to zero and less then the length of the specified string.");
+		php_error_docref(NULL, E_WARNING, "length must be greater or equal to zero and less then the length of the specified string.");
 		RETURN_FALSE;
 	}
 
-	ZEND_FETCH_RESOURCE(f, php_fd_t *, &r_fd, -1, le_fd_name, le_fd);
+	if ((f = (php_fd_t *)zend_fetch_resource(Z_RES_P(r_fd), le_fd_name, le_fd)) == NULL) {
+		RETURN_FALSE;
+	}
 
 	res = write(f->fd, data, trunc_len ? trunc_len : data_len);
 	if (res == -1) {
-		php_error_docref(NULL TSRMLS_CC, E_WARNING, "cannot write data to file descriptor %d: %s", f->fd, strerror(errno));
+		php_error_docref(NULL, E_WARNING, "cannot write data to file descriptor %d: %s", f->fd, strerror(errno));
 	}
 
 	RETURN_LONG(res);
@@ -254,14 +265,16 @@ PHP_FUNCTION(dio_truncate)
 	php_fd_t *f;
 	long      offset;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rl", &r_fd, &offset) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "rl", &r_fd, &offset) == FAILURE) {
 		return;
 	}
 
-	ZEND_FETCH_RESOURCE(f, php_fd_t *, &r_fd, -1, le_fd_name, le_fd);
+	if ((f = (php_fd_t *)zend_fetch_resource(Z_RES_P(r_fd), le_fd_name, le_fd)) == NULL) {
+		RETURN_FALSE;
+	}
 
 	if (ftruncate(f->fd, offset) == -1) {
-		php_error_docref(NULL TSRMLS_CC, E_WARNING, "couldn't truncate %d to %ld bytes: %s", f->fd, offset, strerror(errno));
+		php_error_docref(NULL, E_WARNING, "couldn't truncate %d to %ld bytes: %s", f->fd, offset, strerror(errno));
 		RETURN_FALSE;
 	}
 
@@ -280,14 +293,16 @@ PHP_FUNCTION(dio_stat)
 	php_fd_t    *f;
 	struct stat  s;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "r", &r_fd) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "r", &r_fd) == FAILURE) {
 		return;
 	}
 
-	ZEND_FETCH_RESOURCE(f, php_fd_t *, &r_fd, -1, le_fd_name, le_fd);
+	if ((f = (php_fd_t *)zend_fetch_resource(Z_RES_P(r_fd), le_fd_name, le_fd)) == NULL) {
+		RETURN_FALSE;
+	}
 
 	if (fstat(f->fd, &s) == -1) {
-		php_error_docref(NULL TSRMLS_CC, E_WARNING, "cannot stat %d: %s", f->fd, strerror(errno));
+		php_error_docref(NULL, E_WARNING, "cannot stat %d: %s", f->fd, strerror(errno));
 		RETURN_FALSE;
 	}
 
@@ -319,11 +334,13 @@ PHP_FUNCTION(dio_seek)
 	long      offset;
 	long      whence = SEEK_SET;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rl|l", &r_fd, &offset, &whence) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "rl|l", &r_fd, &offset, &whence) == FAILURE) {
 		return;
 	}
 
-	ZEND_FETCH_RESOURCE(f, php_fd_t *, &r_fd, -1, le_fd_name, le_fd);
+	if ((f = (php_fd_t *)zend_fetch_resource(Z_RES_P(r_fd), le_fd_name, le_fd)) == NULL) {
+		RETURN_FALSE;
+	}
 
 	RETURN_LONG(lseek(f->fd, offset, whence));
 }
@@ -340,47 +357,49 @@ PHP_FUNCTION(dio_fcntl)
 	php_fd_t *f;
 	long      cmd;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rl|z", &r_fd, &cmd, &arg) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "rl|z", &r_fd, &cmd, &arg) == FAILURE) {
 		return;
 	}
 
-	ZEND_FETCH_RESOURCE(f, php_fd_t *, &r_fd, -1, le_fd_name, le_fd);
+	if ((f = (php_fd_t *)zend_fetch_resource(Z_RES_P(r_fd), le_fd_name, le_fd)) == NULL) {
+		RETURN_FALSE;
+	}
 
 	switch (cmd) {
 		case F_SETLK:
 		case F_SETLKW: {
-			zval          **element;
+			zval           *element;
 			struct flock    lk = {0};
 			HashTable      *fh;
 
 			if (!arg) {
-				php_error_docref(NULL TSRMLS_CC, E_WARNING, "expects argument 3 to be array or int, none given");
+				php_error_docref(NULL, E_WARNING, "expects argument 3 to be array or int, none given");
 				RETURN_FALSE;
 			}
 			if (Z_TYPE_P(arg) == IS_ARRAY) {
 				fh = HASH_OF(arg);
-				if (zend_hash_find(fh, "start", sizeof("start"), (void **) &element) == FAILURE) {
+				if ((element = zend_hash_str_find(fh, "start", sizeof("start"))) == NULL) {
 					lk.l_start = 0;
 				} else {
-					lk.l_start = Z_LVAL_PP(element);
+					lk.l_start = Z_LVAL_P(element);
 				}
 
-				if (zend_hash_find(fh, "length", sizeof("length"), (void **) &element) == FAILURE) {
+				if ((element = zend_hash_str_find(fh, "length", sizeof("length"))) == NULL) {
 					lk.l_len = 0;
 				} else {
-					lk.l_len = Z_LVAL_PP(element);
+					lk.l_len = Z_LVAL_P(element);
 				}
 
-				if (zend_hash_find(fh, "whence", sizeof("whence"), (void **) &element) == FAILURE) {
+				if ((element = zend_hash_str_find(fh, "whence", sizeof("whence"))) == NULL) {
 					lk.l_whence = 0;
 				} else {
-					lk.l_whence = Z_LVAL_PP(element);
+					lk.l_whence = Z_LVAL_P(element);
 				}
 
-				if (zend_hash_find(fh, "type", sizeof("type"), (void **) &element) == FAILURE) {
+				if ((element = zend_hash_str_find(fh, "type", sizeof("type"))) == NULL) {
 					lk.l_type = 0;
 				} else {
-					lk.l_type = Z_LVAL_PP(element);
+					lk.l_type = Z_LVAL_P(element);
 				}
 			} else if (Z_TYPE_P(arg) == IS_LONG) {
 				lk.l_start  = 0;
@@ -388,7 +407,7 @@ PHP_FUNCTION(dio_fcntl)
 				lk.l_whence = SEEK_SET;
 				lk.l_type   = Z_LVAL_P(arg);
 			} else {
-				php_error_docref(NULL TSRMLS_CC, E_WARNING, "expects argument 3 to be array or int, %s given", zend_zval_type_name(arg));
+				php_error_docref(NULL, E_WARNING, "expects argument 3 to be array or int, %s given", zend_zval_type_name(arg));
 				RETURN_FALSE;
 			}
 
@@ -413,19 +432,19 @@ PHP_FUNCTION(dio_fcntl)
 			php_fd_t *new_f;
 
 			if (!arg || Z_TYPE_P(arg) != IS_LONG) {
-				php_error_docref(NULL TSRMLS_CC, E_WARNING, "expects argument 3 to be int");
+				php_error_docref(NULL, E_WARNING, "expects argument 3 to be int");
 				RETURN_FALSE;
 			}
 
 			if (!new_php_fd(&new_f, fcntl(f->fd, cmd, Z_LVAL_P(arg)))) {
 				RETURN_FALSE;
 			}
-			ZEND_REGISTER_RESOURCE(return_value, new_f, le_fd);
+			RETVAL_RES(zend_register_resource(new_f, le_fd));
 			break;
 		}
 		default:
 			if (!arg || Z_TYPE_P(arg) != IS_LONG) {
-				php_error_docref(NULL TSRMLS_CC, E_WARNING, "expects argument 3 to be int");
+				php_error_docref(NULL, E_WARNING, "expects argument 3 to be int");
 				RETURN_FALSE;
 			}
 
@@ -448,55 +467,57 @@ PHP_FUNCTION(dio_tcsetattr)
 	int Baud_Rate, Data_Bits=8, Stop_Bits=1, Parity=0, Flow_Control=1, Is_Canonical=1;
 	long BAUD,DATABITS,STOPBITS,PARITYON,PARITY;
 	HashTable      *fh;
-	zval          **element;
+	zval           *element;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rz", &r_fd, &arg) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "rz", &r_fd, &arg) == FAILURE) {
 		return;
 	}
 
-	ZEND_FETCH_RESOURCE(f, php_fd_t *, &r_fd, -1, le_fd_name, le_fd);
+	if ((f = (php_fd_t *)zend_fetch_resource(Z_RES_P(r_fd), le_fd_name, le_fd)) == NULL) {
+		RETURN_FALSE;
+	}
 
 	if (Z_TYPE_P(arg) != IS_ARRAY) {
-		php_error_docref(NULL TSRMLS_CC, E_WARNING,"tcsetattr, third argument should be an associative array");
+		php_error_docref(NULL, E_WARNING,"tcsetattr, third argument should be an associative array");
 		return;
 	}
 
 	fh = HASH_OF(arg);
 
-	if (zend_hash_find(fh, "baud", sizeof("baud"), (void **) &element) == FAILURE) {
+	if ((element = zend_hash_str_find(fh, "baud", sizeof("baud"))) == NULL) {
 		Baud_Rate = 9600;
 	} else {
-		Baud_Rate = Z_LVAL_PP(element);
+		Baud_Rate = Z_LVAL_P(element);
 	}
 
-	if (zend_hash_find(fh, "bits", sizeof("bits"), (void **) &element) == FAILURE) {
+	if ((element = zend_hash_str_find(fh, "bits", sizeof("bits"))) == NULL) {
 		Data_Bits = 8;
 	} else {
-		Data_Bits = Z_LVAL_PP(element);
+		Data_Bits = Z_LVAL_P(element);
 	}
 
-	if (zend_hash_find(fh, "stop", sizeof("stop"), (void **) &element) == FAILURE) {
+	if ((element = zend_hash_str_find(fh, "stop", sizeof("stop"))) == NULL) {
 		Stop_Bits = 1;
 	} else {
-		Stop_Bits = Z_LVAL_PP(element);
+		Stop_Bits = Z_LVAL_P(element);
 	}
 
-	if (zend_hash_find(fh, "parity", sizeof("parity"), (void **) &element) == FAILURE) {
+	if ((element = zend_hash_str_find(fh, "parity", sizeof("parity"))) == NULL) {
 		Parity = 0;
 	} else {
-		Parity = Z_LVAL_PP(element);
+		Parity = Z_LVAL_P(element);
 	}
 
-	if (zend_hash_find(fh, "flow_control", sizeof("flow_control"), (void **) &element) == FAILURE) {
+	if ((element = zend_hash_str_find(fh, "flow_control", sizeof("flow_control"))) == NULL) {
 		Flow_Control = 1;
 	} else {
-		Flow_Control = Z_LVAL_PP(element);
+		Flow_Control = Z_LVAL_P(element);
 	}
 
-	if (zend_hash_find(fh, "is_canonical", sizeof("is_canonical"), (void **) &element) == FAILURE) {
+	if ((element = zend_hash_str_find(fh, "is_canonical", sizeof("is_canonical"))) == NULL) {
 		Is_Canonical = 0;
 	} else {
-		Is_Canonical = Z_LVAL_PP(element);
+		Is_Canonical = Z_LVAL_P(element);
 	}
 
 	/* assign to correct values... */
@@ -547,7 +568,7 @@ PHP_FUNCTION(dio_tcsetattr)
 			BAUD = B50;
 			break;
 		default:
-			php_error_docref(NULL TSRMLS_CC, E_WARNING, "invalid baud rate %d", Baud_Rate);
+			php_error_docref(NULL, E_WARNING, "invalid baud rate %d", Baud_Rate);
 			RETURN_FALSE;
 	}
 	switch (Data_Bits) {
@@ -564,7 +585,7 @@ PHP_FUNCTION(dio_tcsetattr)
 			DATABITS = CS5;
 			break;
 		default:
-			php_error_docref(NULL TSRMLS_CC, E_WARNING, "invalid data bits %d", Data_Bits);
+			php_error_docref(NULL, E_WARNING, "invalid data bits %d", Data_Bits);
 			RETURN_FALSE;
 	}
 	switch (Stop_Bits) {
@@ -575,7 +596,7 @@ PHP_FUNCTION(dio_tcsetattr)
 			STOPBITS = CSTOPB;
 			break;
 		default:
-			php_error_docref(NULL TSRMLS_CC, E_WARNING, "invalid stop bits %d", Stop_Bits);
+			php_error_docref(NULL, E_WARNING, "invalid stop bits %d", Stop_Bits);
 			RETURN_FALSE;
 	}
 
@@ -593,7 +614,7 @@ PHP_FUNCTION(dio_tcsetattr)
 			PARITY = 0;
 			break;
 		default:
-			php_error_docref(NULL TSRMLS_CC, E_WARNING, "invalid parity %d", Parity);
+			php_error_docref(NULL, E_WARNING, "invalid parity %d", Parity);
 			RETURN_FALSE;
 	}
 
@@ -635,13 +656,15 @@ PHP_FUNCTION(dio_close)
 	zval     *r_fd;
 	php_fd_t *f;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "r", &r_fd) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "r", &r_fd) == FAILURE) {
 		return;
 	}
 
-	ZEND_FETCH_RESOURCE(f, php_fd_t *, &r_fd, -1, le_fd_name, le_fd);
+	if ((f = (php_fd_t *)zend_fetch_resource(Z_RES_P(r_fd), le_fd_name, le_fd)) == NULL) {
+		RETURN_FALSE;
+	}
 
-	zend_list_delete(Z_LVAL_P(r_fd));
+	zend_list_delete(Z_RES_P(r_fd));
 }
 /* }}} */
 
@@ -650,7 +673,7 @@ PHP_FUNCTION(dio_close)
 /* {{{ dio_init_legacy_defines
  * Initialises the legacy PHP defines
  */
-static void dio_init_legacy_defines(int module_number TSRMLS_DC) {
+static void dio_init_legacy_defines(int module_number) {
 	RDIOC(O_RDONLY);
 	RDIOC(O_WRONLY);
 	RDIOC(O_RDWR);
@@ -833,11 +856,11 @@ PHP_MINIT_FUNCTION(dio)
 	/* Legacy resource destructor. */
 	le_fd = zend_register_list_destructors_ex(_dio_close_fd, NULL, le_fd_name, module_number);
 
-	dio_init_legacy_defines(module_number TSRMLS_CC);
+	dio_init_legacy_defines(module_number);
 
 	/* Register the stream wrappers */
-	return (php_register_url_stream_wrapper(DIO_RAW_STREAM_NAME, &php_dio_raw_stream_wrapper TSRMLS_CC) == SUCCESS &&
-			php_register_url_stream_wrapper(DIO_SERIAL_STREAM_NAME, &php_dio_serial_stream_wrapper TSRMLS_CC) == SUCCESS) ? SUCCESS : FAILURE;
+	return (php_register_url_stream_wrapper(DIO_RAW_STREAM_NAME, &php_dio_raw_stream_wrapper) == SUCCESS &&
+			php_register_url_stream_wrapper(DIO_SERIAL_STREAM_NAME, &php_dio_serial_stream_wrapper) == SUCCESS) ? SUCCESS : FAILURE;
 }
 /* }}} */
 
@@ -845,8 +868,8 @@ PHP_MINIT_FUNCTION(dio)
  */
 PHP_MSHUTDOWN_FUNCTION(dio)
 {
-	return (php_unregister_url_stream_wrapper(DIO_RAW_STREAM_NAME TSRMLS_CC) == SUCCESS &&
-			php_unregister_url_stream_wrapper(DIO_SERIAL_STREAM_NAME TSRMLS_CC) == SUCCESS) ? SUCCESS : FAILURE;
+	return (php_unregister_url_stream_wrapper(DIO_RAW_STREAM_NAME) == SUCCESS &&
+			php_unregister_url_stream_wrapper(DIO_SERIAL_STREAM_NAME) == SUCCESS) ? SUCCESS : FAILURE;
 }
 /* }}} */
 
