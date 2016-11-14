@@ -1,6 +1,6 @@
 /*
    +----------------------------------------------------------------------+
-   | PHP Version 5                                                        |
+   | PHP Version 7                                                        |
    +----------------------------------------------------------------------+
    | Copyright (c) 1997-2009 The PHP Group                                |
    +----------------------------------------------------------------------+
@@ -12,6 +12,8 @@
    | obtain it through the world-wide-web, please send a note to          |
    | license@php.net so we can mail you a copy immediately.               |
    +----------------------------------------------------------------------+
+   | Author: Jerry Jacobs <jerry.jacobs@dualinventive.com                 |
+   | Author: Michael Heimpold <mhei@heimpold.de>                          |
    | Author: Sterling Hughes <sterling@php.net>                           |
    | Author: Melanie Rhianna Lewis <cyberspice@php.net>                   |
    +----------------------------------------------------------------------+
@@ -89,8 +91,8 @@ PHP_FUNCTION(dio_open)
 	php_fd_t *f;
 	char     *file_name = NULL;
 	size_t    file_name_length = 0;
-	long      flags;
-	long      mode = 0;
+	zend_long      flags;
+	zend_long      mode = 0;
 	int       fd;
 
 	if (zend_parse_parameters(ZEND_NUM_ARGS(), "sl|l", &file_name, &file_name_length, &flags, &mode) == FAILURE) {
@@ -192,7 +194,7 @@ PHP_FUNCTION(dio_read)
 	zval     *r_fd;
 	php_fd_t *f;
 	char     *data;
-	long      bytes = 1024;
+	zend_long bytes = 1024;
 	ssize_t   res;
 
 	if (zend_parse_parameters(ZEND_NUM_ARGS(), "r|l", &r_fd, &bytes) == FAILURE) {
@@ -211,6 +213,7 @@ PHP_FUNCTION(dio_read)
 	data = emalloc(bytes + 1);
 	res = read(f->fd, data, bytes);
 	if (res <= 0) {
+		php_error_docref(NULL, E_WARNING, "Read error on fd %u: %s (%d)", f->fd, strerror(errno), errno);
 		efree(data);
 		RETURN_NULL();
 	}
@@ -228,16 +231,15 @@ PHP_FUNCTION(dio_write)
 {
 	zval     *r_fd;
 	php_fd_t *f;
-	char     *data;
-	int       data_len;
+	zend_string *data;
 	long      trunc_len = 0;
-	ssize_t   res;
+	zend_long   res;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS(), "rs|l", &r_fd, &data, &data_len, &trunc_len) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "rS|l", &r_fd, &data, &trunc_len) == FAILURE) {
 		return;
 	}
 
-	if (trunc_len < 0 || trunc_len > data_len) {
+	if (trunc_len < 0 || trunc_len > ZSTR_LEN(data)) {
 		php_error_docref(NULL, E_WARNING, "length must be greater or equal to zero and less then the length of the specified string.");
 		RETURN_FALSE;
 	}
@@ -246,7 +248,7 @@ PHP_FUNCTION(dio_write)
 		RETURN_FALSE;
 	}
 
-	res = write(f->fd, data, trunc_len ? trunc_len : data_len);
+	res = write(f->fd, ZSTR_VAL(data), trunc_len ? trunc_len : ZSTR_LEN(data));
 	if (res == -1) {
 		php_error_docref(NULL, E_WARNING, "cannot write data to file descriptor %d: %s", f->fd, strerror(errno));
 	}
@@ -378,25 +380,25 @@ PHP_FUNCTION(dio_fcntl)
 			}
 			if (Z_TYPE_P(arg) == IS_ARRAY) {
 				fh = HASH_OF(arg);
-				if ((element = zend_hash_str_find(fh, "start", sizeof("start"))) == NULL) {
+				if ((element = zend_hash_str_find(fh, "start", sizeof("start") - 1)) == NULL) {
 					lk.l_start = 0;
 				} else {
 					lk.l_start = Z_LVAL_P(element);
 				}
 
-				if ((element = zend_hash_str_find(fh, "length", sizeof("length"))) == NULL) {
+				if ((element = zend_hash_str_find(fh, "length", sizeof("length") - 1)) == NULL) {
 					lk.l_len = 0;
 				} else {
 					lk.l_len = Z_LVAL_P(element);
 				}
 
-				if ((element = zend_hash_str_find(fh, "whence", sizeof("whence"))) == NULL) {
+				if ((element = zend_hash_str_find(fh, "whence", sizeof("whence") - 1)) == NULL) {
 					lk.l_whence = 0;
 				} else {
 					lk.l_whence = Z_LVAL_P(element);
 				}
 
-				if ((element = zend_hash_str_find(fh, "type", sizeof("type"))) == NULL) {
+				if ((element = zend_hash_str_find(fh, "type", sizeof("type") - 1)) == NULL) {
 					lk.l_type = 0;
 				} else {
 					lk.l_type = Z_LVAL_P(element);
@@ -484,37 +486,37 @@ PHP_FUNCTION(dio_tcsetattr)
 
 	fh = HASH_OF(arg);
 
-	if ((element = zend_hash_str_find(fh, "baud", sizeof("baud"))) == NULL) {
+	if ((element = zend_hash_str_find(fh, "baud", sizeof("baud") - 1)) == NULL) {
 		Baud_Rate = 9600;
 	} else {
 		Baud_Rate = Z_LVAL_P(element);
 	}
 
-	if ((element = zend_hash_str_find(fh, "bits", sizeof("bits"))) == NULL) {
+	if ((element = zend_hash_str_find(fh, "bits", sizeof("bits") - 1)) == NULL) {
 		Data_Bits = 8;
 	} else {
 		Data_Bits = Z_LVAL_P(element);
 	}
 
-	if ((element = zend_hash_str_find(fh, "stop", sizeof("stop"))) == NULL) {
+	if ((element = zend_hash_str_find(fh, "stop", sizeof("stop") - 1)) == NULL) {
 		Stop_Bits = 1;
 	} else {
 		Stop_Bits = Z_LVAL_P(element);
 	}
 
-	if ((element = zend_hash_str_find(fh, "parity", sizeof("parity"))) == NULL) {
+	if ((element = zend_hash_str_find(fh, "parity", sizeof("parity") - 1)) == NULL) {
 		Parity = 0;
 	} else {
 		Parity = Z_LVAL_P(element);
 	}
 
-	if ((element = zend_hash_str_find(fh, "flow_control", sizeof("flow_control"))) == NULL) {
-		Flow_Control = 1;
+	if ((element = zend_hash_str_find(fh, "flow_control", sizeof("flow_control") - 1)) == NULL) {
+		Flow_Control = 0;
 	} else {
 		Flow_Control = Z_LVAL_P(element);
 	}
 
-	if ((element = zend_hash_str_find(fh, "is_canonical", sizeof("is_canonical"))) == NULL) {
+	if ((element = zend_hash_str_find(fh, "is_canonical", sizeof("is_canonical") - 1)) == NULL) {
 		Is_Canonical = 0;
 	} else {
 		Is_Canonical = Z_LVAL_P(element);
@@ -826,8 +828,7 @@ static zend_function_entry dio_functions[] = {
 	PHP_FE(dio_raw, dio_raw_args)
 	PHP_FE(dio_serial, dio_serial_args)
 
-	/* End of functions */
-	{NULL, NULL, NULL}
+	PHP_FE_END
 };
 
 zend_module_entry dio_module_entry = {
@@ -836,7 +837,7 @@ zend_module_entry dio_module_entry = {
 	dio_functions,
 	PHP_MINIT(dio),
 	NULL,
-	NULL,	
+	NULL,
 	NULL,
 	PHP_MINFO(dio),
 	PHP_DIO_VERSION,
